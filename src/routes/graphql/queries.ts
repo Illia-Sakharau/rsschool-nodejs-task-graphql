@@ -1,10 +1,17 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import { GraphQLList, GraphQLNonNull, GraphQLObjectType } from "graphql";
 import { MemberTypeId, MemberTypeType } from "./types/memberType.js";
+import {
+  ResolveTree,
+  parseResolveInfo,
+  simplify,
+} from 'graphql-parse-resolve-info';
 import { PrismaClient } from '@prisma/client';
 import { PostType } from "./types/post.js";
 import { UUIDType } from "./types/uuid.js";
 import { UserType } from "./types/user.js";
 import { ProfileType } from "./types/profile.js";
+import { LoadersType } from "./loaders.js";
 
 
 export const rootQuery = new GraphQLObjectType({
@@ -57,9 +64,41 @@ export const rootQuery = new GraphQLObjectType({
     //user
     users: {
       type: new GraphQLList(UserType),
-      resolve: async (_source, _args, context) => {
-        const { prisma } = context as { prisma: PrismaClient };
-        return await prisma.user.findMany()
+      resolve: async (_source, _args, context, info) => {
+        const { prisma, loaders } = context as { prisma: PrismaClient, loaders: LoadersType };
+        const { fields } = simplify((parseResolveInfo(info) as ResolveTree), UserType);
+        const hasAuthors = 'subscribedToUser' in fields;
+        const hasSubs = 'userSubscribedTo' in fields;
+
+        const users = await prisma.user.findMany({
+          include: {
+            subscribedToUser: hasAuthors,
+            userSubscribedTo: hasSubs,
+          }
+        })
+
+        if (hasAuthors || hasSubs) {
+          const usersMap = users.reduce((map, user) => {
+            return { ...map, [user.id]: user }
+          }, {});
+
+          users.forEach((user) => {
+            if (hasSubs) {
+              loaders.userSubscribedToLoader.prime(
+                user.id,
+                user.userSubscribedTo.map(({ authorId }) => usersMap[authorId]),
+              )
+            }
+            if (hasAuthors) {
+              loaders.subscribedToUserLoader.prime(
+                user.id,
+                user.subscribedToUser.map(({ subscriberId }) => usersMap[subscriberId]),
+              )
+            }
+          })
+        }
+
+        return users
       }
     },
     user: {

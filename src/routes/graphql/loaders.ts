@@ -63,7 +63,7 @@ export const Loaders = (prisma: PrismaClient) => ({
       }
     });
     const authorsMap = usersWithAuthors.reduce((map, author) => {
-      const subscribedAuthors = author.userSubscribedTo.map((subs) => subs.author);
+      const subscribedAuthors = author.userSubscribedTo.map(({ author }) => author);
       return { ...map, [author.id]: subscribedAuthors }
     }, {});
     return ids.map((id) => authorsMap[id] || [])
@@ -85,7 +85,7 @@ export const Loaders = (prisma: PrismaClient) => ({
       }
     });
     const subsMap = usersWithSubs.reduce((map, sub) => {
-      const subscribers = sub.subscribedToUser.map((user) => user.subscriber);
+      const subscribers = sub.subscribedToUser.map(({ subscriber }) => subscriber);
       return { ...map, [sub.id]: subscribers }
     }, {});
     return ids.map((id) => subsMap[id] || [])
